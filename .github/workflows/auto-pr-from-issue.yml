@@ -30,25 +30,42 @@ jobs:
             const issue = context.payload.issue;
             const body = issue.body;
 
-            // 코드 블록 추출 (정규식 강화)
-            const codeMatch = body.match(/```typescript\n([\s\S]*?)\n```/);
-            const code = codeMatch ? codeMatch[1] : null;
+            // [디버깅] 실제 들어온 Issue Body 내용을 로그에 찍어서 확인
+            console.log("--- [DEBUG] Issue Body Content ---");
+            console.log(body);
+            console.log("----------------------------------");
 
-            // Metadata 추출
-            const metadataMatch = body.match(/```json\n([\s\S]*?)\n```/);
-            // JSON 파싱 실패 방지 로직 추가
+            // 1. 코드 블록 추출 (정규식 개선: 언어명 뒤 공백/줄바꿈 유연하게 처리)
+            // ```typescript 뿐만 아니라 ```ts, 또는 그냥 ``` 만 있어도 잡도록 수정
+            const codeMatch = body.match(/```(typescript|ts|javascript|js)?\s*([\s\S]*?)\s*```/);
+            const code = codeMatch ? codeMatch[2] : null;
+
+            // 2. Metadata 추출
+            const metadataMatch = body.match(/```json\s*([\s\S]*?)\s*```/);
+
             let metadata = {};
-            try {
-                metadata = metadataMatch ? JSON.parse(metadataMatch[1]) : {};
-            } catch (e) {
-                console.log("JSON Parse Error");
+            if (metadataMatch) {
+                const jsonString = metadataMatch[1];
+                console.log("--- [DEBUG] Found JSON String ---");
+                console.log(jsonString); // 무엇을 파싱하려고 했는지 로그 출력
+                
+                try {
+                    metadata = JSON.parse(jsonString);
+                } catch (e) {
+                    console.log("❌ JSON Parse Error 발생!");
+                    console.log("Error details:", e.message);
+                    // 여기서 에러가 나면 n8n에서 보낸 데이터 형식을 의심해야 함
+                }
+            } else {
+                console.log("❌ Metadata JSON block not found in issue body.");
             }
 
             if (!code || !metadata.filename) {
-              core.setFailed('Could not extract code or filename from issue body.');
+              core.setFailed('Could not extract code or filename from issue body. Check the logs above.');
               return;
             }
 
+            // 브랜치 이름 생성
             const branchName = `ai-issue-${issue.number}`;
 
             core.setOutput('code', code);
